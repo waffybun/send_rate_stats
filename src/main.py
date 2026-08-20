@@ -6,6 +6,9 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import pandas as pd
 from pathlib import Path
+import plotly.express as px
+
+import streamlit as st
 
 requests_cache.install_cache('global_cache', expire_after=3600) # cache api responses for an hour so we don't need to keep getting them over and over
 
@@ -19,23 +22,65 @@ time_deltas = []
 notes = []
 notable_time_deltas = []
 
-filter_demons = False # if false only log nondemons, if true only log demons
-filter_platformers = False # if false only log classics, if true only log platformers
-custom_level_search = False # if false run statistics from scraped ids, if true run statistics for only the provided ids
+extra_info = st.empty()
 
-levels_to_count = 100
+if 'run_awarded' not in st.session_state:
+    st.session_state['run_awarded'] = False
 
-notable_time_difference = 12 if not filter_demons and not filter_platformers else 48 
+if 'run_custom' not in st.session_state:
+    st.session_state['run_custom'] = False
+
+if 'filter_demons' not in st.session_state:
+    st.session_state['filter_demons'] = False
+
+if 'filter_platformers' not in st.session_state:
+    st.session_state['filter_platformers'] = False
+
+if 'debug' not in st.session_state:
+    st.session_state['debug'] = False
+
+if 'mode' not in st.session_state:
+    st.session_state['mode'] = None
+
+if 'debug_expander' not in st.session_state:
+    st.session_state['debug_expander'] = None
+
+""" 
+# Send/Rate Statistics Visualizer
+Please note all provided times are in UTC unless otherwise specified.
+"""
+
+col1, col2 = st.columns(2)
+with col2:
+    if st.button('Get statistics from custom IDs'):
+        st.session_state['mode'] = 'custom'
+with col1:
+    if st.button("Run statistics on Awarded Tab levels"):
+        st.session_state['mode'] = 'awarded'
+
+notable_time_difference = 12 # defaults to 12 hours
 # levels with a send-rate time difference past the threshold get printed separately at the end
 
-def get_level_data(level_id, debug=False):
+if st.session_state['mode'] == 'awarded':
+    filter_demons = st.checkbox('Demons only?', key='filter_demons')
+    filter_platformers = st.checkbox('Platformers only?', key='filter_platformers')
+    debug = st.checkbox('Extra debug info?', key='debug')
+    levels_to_count = st.number_input("Number of levels to search from", min_value=1, max_value=100, step=1, value=100, key='levels_to_count')
+    notable_time_difference = 12 if not filter_demons and not filter_platformers else 48 
+    run_awarded = st.button("Run", key="run_awarded")
+elif st.session_state['mode'] == 'custom':
+    st.text_input("Enter ID(s), space-separated:", key="IDs")
+    run_custom = st.button("Run", key="run_custom")
+
+def get_level_data(level_id, debug, log=None):
     link = f"https://api.senddb.dev/api/v1/level/{level_id}"
     response = requests.get(link, headers=headers)
     json_data = response.json() if response and response.status_code == 200 else None
     if json_data:
         level_name = json_data['name']
         creator = json_data['creator']['name']
-        if debug: print(f"Checking stats for {level_name} by {creator} (ID {level_id})")
+        if log:
+            log.write(f"Checking stats for {level_name} by {creator} (ID {level_id})")
         sends = json_data['sends']
         if sends: 
             most_recent_send_time = sends[len(sends)-1]['timestamp']
@@ -44,22 +89,26 @@ def get_level_data(level_id, debug=False):
                 for send in sends:
                     list_send_timestamp = float(send['timestamp'])/1000 # convert from ms to s
                     list_send_time = datetime.fromtimestamp(list_send_timestamp, tz=timezone.utc)
-                    if debug: print(f"Time of send {send_counter}: {list_send_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    if debug and log: log.write(f"Time of send {send_counter}: {list_send_time.strftime('%Y-%m-%d %H:%M:%S')}")
                     send_counter += 1
             last_send_timestamp = float(most_recent_send_time)/1000 # convert from ms to s
             send_time = datetime.fromtimestamp(last_send_timestamp, tz=timezone.utc)
             send_times.append(send_time)
-            print(f"Time of {level_name} by {creator} (ID {level_id})'s most recent send: {send_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            if log and not debug:
+                log.write(f"Time of {level_name} by {creator} (ID {level_id})'s most recent send: {send_time.strftime('%Y-%m-%d %H:%M:%S')}")
         else:
-            print(f"{level_name} by {creator} (ID {level_id}) was rated without any sends, or the level was rated before SendDB started tracking sends.")
+            if log:
+                log.write(f"{level_name} by {creator} (ID {level_id}) was rated without any sends, or the level was rated before SendDB started tracking sends.")
             notes.append(f"{level_name} by {creator} (ID {level_id}) was rated without any sends, or the level was rated before SendDB started tracking sends.")
         if json_data['rate']:
             rate_timestamp = float(json_data['rate']['timestamp'])/1000 # convert from ms to s
             rate_time = datetime.fromtimestamp(rate_timestamp, tz=timezone.utc)
             time_difference = rate_time-send_time
-            print(f"Time level was rated: {rate_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            if log:
+                log.write(f"Time level was rated: {rate_time.strftime('%Y-%m-%d %H:%M:%S')}")
             rate_times.append(rate_time)
-            print(f"Time between last send and level rate: {custom_format(time_difference)}")
+            if log:
+                log.write(f"Time between last send and level rate: {custom_format(time_difference)}")
             time_deltas.append(time_difference)
             if time_difference.total_seconds() / 3600 > notable_time_difference: # levels rated a very significant amount of time after the last send, depends on mode
                 # convert the timedelta to a datetime
@@ -69,14 +118,26 @@ def get_level_data(level_id, debug=False):
                 seconds = int(total_seconds % 60)
                 notable_time_deltas.append(f"{level_name} by {creator} (ID {level_id}) was rated {hours:02}:{minutes:02}:{seconds:02} after its last send.")
         else:
-            print(f"{level_name} by {creator} (ID {level_id}) is not rated.")
+            if log:
+                log.write(f"{level_name} by {creator} (ID {level_id}) is not rated.")
     else:
-        print(f"Level with ID {level_id} does not exist, or the API is unavailable.")
-    print("")
+        if log:
+            log.write(f"Level with ID {level_id} does not exist, is not in the SendDB database (likely too old), or the API is unavailable.")
+            notes.append(f"Level with ID {level_id} does not exist, is not in the SendDB database (likely too old), or the API is unavailable.")
+    log.write("\n")
 
-def get_batch_level_data(id_list, debug=False):
+def get_batch_level_data(id_list, log=None):
+    progress = st.empty()
+    bar = st.progress(0)
+    count = 1
+    max = len(id_list)
     for id in id_list:
-        get_level_data(id, debug)
+        progress.text(f'Processing level {count}/{max}')
+        bar.progress(int(count/max*100))
+        get_level_data(id, st.session_state['debug'], log)
+        count += 1
+    progress.empty()
+    bar.empty()
 
 def custom_format(td): # properly format timedeltas
     total_seconds = td.total_seconds()
@@ -85,19 +146,28 @@ def custom_format(td): # properly format timedeltas
     seconds = int(total_seconds % 60)
     return '{:02d}:{:02d}:{:02d}'.format(hours, minutes, seconds)
 
-print("\nProgram starting. Please note all provided times are in UTC unless otherwise specified.\n")
+if st.session_state['run_custom']:
+    st.session_state['debug_expander'] = st.expander("Level-by-level details", expanded=False)
+    log = st.session_state['debug_expander']
+    id_list = st.session_state['IDs'].split()
 
-if custom_level_search:
-    input = input("Enter ID of level to search, or enter a list of IDs separated by spaces to batch search: ")
-    id_list = input.split()
-    print()
-else:
-    if filter_demons: print("Only searching for demons.")
-    else: print ("Only searching for nondemons.")
+if st.session_state['run_awarded']:
+    st.session_state['debug_expander'] = st.expander("Level-by-level details", expanded=False)
+    log = st.session_state['debug_expander']
+    if st.session_state['filter_demons']:
+        if log:
+            log.write("Only searching for demons.")
+    else: 
+        if log:
+            log.write("Only searching for nondemons.")
 
-    if filter_platformers: print("Only searching for platformers.")
-    else: print("Only searching for classics (platformers excluded).")
-    print()
+    if st.session_state['filter_platformers']: 
+        if log:
+            log.write("Only searching for platformers.")
+    else: 
+        if log:
+            log.write("Only searching for classics (platformers excluded).")
+    log.write("\n")
 
     rated_level_list_filepath = Path(__file__).resolve().parents[1] / "files" / "Rated Levels List - Levels.csv"
     rates = pd.read_csv(rated_level_list_filepath, dtype=str)
@@ -109,7 +179,7 @@ else:
     id_list = []
     current_position = 1 # last level in the array
 
-    while len(id_list) < levels_to_count and current_position < len(rates):
+    while len(id_list) < st.session_state['levels_to_count'] and current_position < len(rates):
         if current_position % 10 == 3:
             current_position += 8 # so the pattern should be 1, 2, 11, 12, 21, 22, etc...
 
@@ -119,16 +189,16 @@ else:
 
         current_row = rates.iloc[-1*current_position]
 
-        if filter_demons and current_row["Reward"] != "10⭐": 
+        if st.session_state['filter_demons'] and not "10" in current_row["Reward"]: 
             current_position += 1 # if sorting for only demons, skip nondemons
             continue
-        if not filter_demons and current_row["Reward"] == "10⭐": 
+        if not st.session_state['filter_demons'] and "10" in current_row["Reward"]: 
             current_position += 1 # if sorting only for nondemons, skip demons
             continue 
-        if filter_platformers and current_row["Gamemode"] == "⭐ Classic": 
+        if st.session_state['filter_platformers'] and current_row["Gamemode"] == "⭐ Classic": 
             current_position += 1 # if sorting for only plats, skip classics
             continue 
-        if not filter_platformers and current_row["Gamemode"] == "🌙 Platformer": 
+        if not st.session_state['filter_platformers'] and current_row["Gamemode"] == "🌙 Platformer": 
             current_position += 1 # if sorting for only classics, skip plats
             continue 
 
@@ -137,105 +207,130 @@ else:
 
         current_position += 1
 
-get_batch_level_data(id_list)
+if st.session_state['run_custom'] or st.session_state['run_awarded']:
 
-robtop_tz = ZoneInfo("Europe/Stockholm")
+    log = st.session_state['debug_expander']
+    get_batch_level_data(id_list, log=log)
 
-"""
-print("Times of the given levels' most recent send (converted to RobTop's timezone):")
+    robtop_tz = ZoneInfo("Europe/Stockholm")
 
-for time in send_times:
-    converted_time = time.astimezone(robtop_tz)
-    print(converted_time.strftime('%H:%M:%S'))
-print("")
+    notes_exp = st.expander("Notes", expanded=True)
+    if len(notable_time_deltas) > 0:
+        notes_exp.write("Levels that have a higher than usual time difference between last send and rate:")
+        for level in notable_time_deltas:
+            notes_exp.write(level)
+        notes_exp.write("\n")
 
-print("Times that the given levels were rated at (converted to RobTop's timezone):")
-for time in rate_times:
-    converted_time = time.astimezone(robtop_tz)
-    print(converted_time.strftime('%H:%M:%S'))
-print("")
-
-print("Time between each level's most recent send and when it got rated:")
-for time in time_deltas:
-    print(custom_format(time))
-print("")
-"""
-
-print("Levels that have a higher than usual time difference between last send and rate:")
-for level in notable_time_deltas:
-    print(level)
-print("")
-
-if len(notes) > 0:
-    print("Other noteworthy levels:")
-    for level in notes:
-        print(level)
-    print("")
+    if len(notes) > 0:
+        notes_exp.write("Noteworthy levels:")
+        for level in notes:
+            notes_exp.write(level)
+        notes_exp.write("\n")
 
 
-# TEMPORARY AI SLOP BELOW (just using this to see if i'm actually onto something, if i am i'll rewrite the code myself)
+    # TEMPORARY AI SLOP BELOW (just using this to see if i'm actually onto something, if i am i'll rewrite the code myself)
 
-# 1. Process Data
-rate_hours = [time.astimezone(robtop_tz).hour + time.astimezone(robtop_tz).minute / 60.0 for time in rate_times]
-send_hours = [time.astimezone(robtop_tz).hour + time.astimezone(robtop_tz).minute / 60.0 for time in send_times]
-delta_hours = [td.total_seconds() / 3600.0 for td in time_deltas]
+      # 1. Process Data
+    rate_hours = [time.astimezone(robtop_tz).hour + time.astimezone(robtop_tz).minute / 60.0 for time in rate_times]
+    send_hours = [time.astimezone(robtop_tz).hour + time.astimezone(robtop_tz).minute / 60.0 for time in send_times]
+    
+    # --- FIXED DELAY LOGIC (Capping Outliers for Readability) ---
+    raw_delta_hours = [td.total_seconds() / 3600.0 for td in time_deltas]
+    
+    # Cap any delay greater than 24 hours to exactly 25 hours so it lands in a final bucket
+    delta_hours = [h if h <= 24.0 else 25.0 for h in raw_delta_hours]
 
-# 24-hour bins
-bins_2hr = list(range(0, 26, 2))
-bin_centers_2hr = [h + 1 for h in bins_2hr[:-1]]
-labels_2hr = [f"{h:02d}:00–{h+2:02d}:00" for h in bins_2hr[:-1]]
+    # Create explicit layout labels up to 24 hours, plus a catch-all block
+    bins_delta = list(range(0, 26, 2)) # [0, 2, 4, ... 24]
+    bin_centers_delta = [h + 1 for h in bins_delta[:-1]]
+    bin_centers_delta.append(25.0)     # Place center for the final bucket
+    
+    labels_delta = [f"{h}h–{h+2}h" for h in bins_delta[:-1]]
+    labels_delta.append("24h+")        # Appended label for outliers
 
-# --- Updated Delay Bins Logic ---
-max_delta = max(delta_hours) if delta_hours else 24
+    # Standard 24-hour bins for Time-of-Day graphs
+    bins_2hr = list(range(0, 26, 2))
+    bin_centers_2hr = [h + 1 for h in bins_2hr[:-1]]
+    labels_2hr = [f"{h:02d}:00–{h+2:02d}:00" for h in bins_2hr[:-1]]
 
-# 1. Dynamically choose bin size based on how large the maximum delay is
-if max_delta <= 24:
-    bin_step = 2       
-elif max_delta <= 250:
-    bin_step = 4      
-elif max_delta <= 500:
-    bin_step = 8
-elif max_delta <= 1000:
-    bin_step = 16
-else:
-    bin_step = 48      
 
-# 2. Build the bins using the adaptive step size
-max_bin_limit = int(((max_delta // bin_step) + 1) * bin_step)
-bins_delta = list(range(0, max_bin_limit + bin_step, bin_step))
+    # --- CHART 1: Fixed 2-Hour Bars & Margins ---
+    df_rate = pd.DataFrame({"Hours": rate_hours})
+    fig1 = px.histogram(
+        df_rate, 
+        x="Hours", 
+        range_x=[0, 26],
+        nbins=13, # Forces exactly 13 bars across 26 units
+        title="Frequency of Level Ratings by Time of Day (RobTop's Timezone)"
+    )
+    fig1.update_layout(
+        xaxis=dict(tickmode='array', tickvals=bin_centers_2hr, ticktext=labels_2hr, tickangle=35),
+        bargap=0.15,
+        title_font=dict(size=14, family="Arial"),
+        template="plotly_dark",  
+        paper_bgcolor="rgba(0,0,0,0)",  
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=60, r=60, t=60, b=90) # <-- Fixed edge cropping
+    )
+    # Strictly enforce individual bar boundaries via xbins
+    fig1.update_traces(
+        xbins=dict(start=0, end=26, size=2), 
+        marker_color='skyblue', 
+        marker_line_color='white', 
+        marker_line_width=0.5
+    )
+    st.plotly_chart(fig1, width="stretch")
 
-# 3. Center the labels precisely between the custom bin edges
-bin_centers_delta = [h + (bin_step / 2) for h in bins_delta[:-1]]
-labels_delta = [f"{h}h–{h+bin_step}h" for h in bins_delta[:-1]]
 
-# 2. Use layout='constrained' for automatic spacing between subplots
-fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 16), layout='constrained')
+    # --- CHART 2: Fixed Send Times ---
+    df_send = pd.DataFrame({"Hours": send_hours})
+    fig2 = px.histogram(
+        df_send, 
+        x="Hours", 
+        range_x=[0, 26],
+        nbins=13,
+        title="Frequency of 'Successful' Sends by Time of Day (RobTop's Timezone)"
+    )
+    fig2.update_layout(
+        xaxis=dict(tickmode='array', tickvals=bin_centers_2hr, ticktext=labels_2hr, tickangle=35),
+        bargap=0.15,
+        title_font=dict(size=14, family="Arial"),
+        template="plotly_dark",  
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=60, r=60, t=60, b=90)
+    )
+    fig2.update_traces(
+        xbins=dict(start=0, end=26, size=2),
+        marker_color='thistle', 
+        marker_line_color='white', 
+        marker_line_width=0.5
+    )
+    st.plotly_chart(fig2, width="stretch")
 
-# Chart 1: Rate Times
-ax1.hist(rate_hours, bins=bins_2hr, color='skyblue', edgecolor='black', rwidth=0.85)
-ax1.set_title("Frequency of Level Ratings by Time of Day (RobTop's Timezone)", fontsize=12, fontweight='bold', pad=10)
-ax1.set_xlabel('Time of Day (2-Hour Intervals)', fontsize=10, labelpad=8)
-ax1.set_ylabel('Levels Rated', fontsize=10)
-ax1.set_xticks(bin_centers_2hr)
-ax1.set_xticklabels(labels_2hr, rotation=35, ha='right')
-ax1.grid(axis='y', linestyle='--', alpha=0.7)
 
-# Chart 2: Send Times
-ax2.hist(send_hours, bins=bins_2hr, color='thistle', edgecolor='black', rwidth=0.85)
-ax2.set_title("Frequency of 'Successful' Sends by Time of Day (RobTop's Timezone)", fontsize=12, fontweight='bold', pad=10)
-ax2.set_xlabel('Time of Day (2-Hour Intervals)', fontsize=10, labelpad=8)
-ax2.set_ylabel('Levels Sent', fontsize=10)
-ax2.set_xticks(bin_centers_2hr)
-ax2.set_xticklabels(labels_2hr, rotation=35, ha='right')
-ax2.grid(axis='y', linestyle='--', alpha=0.7)
-
-# Chart 3: Time Elapsed Until Rated
-ax3.hist(delta_hours, bins=bins_delta, color='lightgreen', edgecolor='black', rwidth=0.85)
-ax3.set_title('Time Elapsed Between Most Recent Send and Level Rate', fontsize=12, fontweight='bold', pad=10)
-ax3.set_xlabel('Delay Window (Hours)', fontsize=10, labelpad=8)
-ax3.set_ylabel('Levels', fontsize=10)
-ax3.set_xticks(bin_centers_delta)
-ax3.set_xticklabels(labels_delta, rotation=45, ha='right')
-ax3.grid(axis='y', linestyle='--', alpha=0.7)
-
-plt.show()
+    # --- CHART 3: Fixed Outlier Scaling ---
+    df_delta = pd.DataFrame({"Delay": delta_hours})
+    fig3 = px.histogram(
+        df_delta, 
+        x="Delay", 
+        range_x=[0, 26],
+        nbins=13,
+        title="Time Elapsed Between Most Recent Send and Level Rate"
+    )
+    fig3.update_layout(
+        xaxis=dict(tickmode='array', tickvals=bin_centers_delta, ticktext=labels_delta, tickangle=45),
+        bargap=0.15,
+        title_font=dict(size=14, family="Arial"),
+        template="plotly_dark",  
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=60, r=60, t=60, b=90)
+    )
+    fig3.update_traces(
+        xbins=dict(start=0, end=26, size=2),
+        marker_color='lightgreen', 
+        marker_line_color='white', 
+        marker_line_width=0.5
+    )
+    st.plotly_chart(fig3, width="stretch")
