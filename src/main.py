@@ -21,11 +21,12 @@ notable_time_deltas = []
 
 filter_demons = False # if false only log nondemons, if true only log demons
 filter_platformers = False # if false only log classics, if true only log platformers
-custom_level_search = True # if false run statistics, if true run statistics for only the provided ids
+custom_level_search = False # if false run statistics from scraped ids, if true run statistics for only the provided ids
 
 levels_to_count = 100
 
-notable_time_difference = 12 if not filter_demons and not filter_platformers else 48
+notable_time_difference = 12 if not filter_demons and not filter_platformers else 48 
+# levels with a send-rate time difference past the threshold get printed separately at the end
 
 def get_level_data(level_id, debug=False):
     link = f"https://api.senddb.dev/api/v1/level/{level_id}"
@@ -139,6 +140,7 @@ else:
 get_batch_level_data(id_list)
 
 robtop_tz = ZoneInfo("Europe/Stockholm")
+
 """
 print("Times of the given levels' most recent send (converted to RobTop's timezone):")
 
