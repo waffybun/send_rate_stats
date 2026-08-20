@@ -21,14 +21,12 @@ There are also graphs generated from the data, which show what times levels are 
 * The program makes API requests using the requests library.
 * The requests_cache library is used to cache SendDB API data for an hour to speed up testing.
 * The pandas library is used to read data from the spreadsheet.
-* Matplotlib is used to graph results and trends.
+* Streamlit was used to create the frontend.
+* Plotly.express is used to graph results and trends.
 
 ### Executing program
 
-* Certain variables within the code need to be set to access certain modes or features.
-```
-I'll give examples of those later in here, currently they can only be modified within the code
-```
+The program can be ran locally, though there is also a hosted version (link coming soon!)
 
 ## Example results
 

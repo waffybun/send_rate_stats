@@ -2,12 +2,9 @@ import requests
 import requests_cache
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
 import pandas as pd
 from pathlib import Path
 import plotly.express as px
-
 import streamlit as st
 
 requests_cache.install_cache('global_cache', expire_after=3600) # cache api responses for an hour so we don't need to keep getting them over and over
