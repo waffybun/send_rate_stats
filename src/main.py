@@ -65,7 +65,7 @@ if st.session_state['mode'] == 'awarded':
     filter_demons = st.checkbox('Demons only?', key='filter_demons')
     filter_platformers = st.checkbox('Platformers only?', key='filter_platformers')
     debug = st.checkbox('Extra debug info?', key='debug')
-    levels_to_count = st.number_input("Number of levels to search from", min_value=1, max_value=100, step=1, value=100, key='levels_to_count')
+    levels_to_count = st.number_input("Number of levels to search from", min_value=1, max_value=200, step=1, value=100, key='levels_to_count')
     notable_time_difference = 12 if not filter_demons and not filter_platformers else 48 
     run_awarded = st.button("Run", key="run_awarded")
 elif st.session_state['mode'] == 'custom':
@@ -214,39 +214,22 @@ if st.session_state['run_custom'] or st.session_state['run_awarded']:
 
     robtop_tz = ZoneInfo("Europe/Stockholm")
 
-    notes_exp = st.expander("Notes", expanded=True)
-    if len(notable_time_deltas) > 0:
-        notes_exp.write("Levels that have a higher than usual time difference between last send and rate:")
-        for level in notable_time_deltas:
-            notes_exp.write(level)
-        notes_exp.write("\n")
-
-    if len(notes) > 0:
-        notes_exp.write("Noteworthy levels:")
-        for level in notes:
-            notes_exp.write(level)
-        notes_exp.write("\n")
-
-
     # TEMPORARY AI SLOP BELOW (just using this to see if i'm actually onto something, if i am i'll rewrite the code myself)
 
-      # 1. Process Data
+    # 1. Process Data
     rate_hours = [time.astimezone(robtop_tz).hour + time.astimezone(robtop_tz).minute / 60.0 for time in rate_times]
     send_hours = [time.astimezone(robtop_tz).hour + time.astimezone(robtop_tz).minute / 60.0 for time in send_times]
     
-    # --- FIXED DELAY LOGIC (Capping Outliers for Readability) ---
-    raw_delta_hours = [td.total_seconds() / 3600.0 for td in time_deltas]
-    
-    # Cap any delay greater than 24 hours to exactly 25 hours so it lands in a final bucket
-    delta_hours = [h if h <= 24.0 else 25.0 for h in raw_delta_hours]
+    # KEEP DATA RAW: Do not cap outliers so the histogram can map them far to the right
+    delta_hours = [td.total_seconds() / 3600.0 for td in time_deltas]
 
-    # Create explicit layout labels up to 24 hours, plus a catch-all block
-    bins_delta = list(range(0, 26, 2)) # [0, 2, 4, ... 24]
-    bin_centers_delta = [h + 1 for h in bins_delta[:-1]]
-    bin_centers_delta.append(25.0)     # Place center for the final bucket
+    # Generate custom bins up to the absolute max value to catch all outliers
+    actual_max = max(delta_hours) if delta_hours else 24
+    max_bin_limit = int(((actual_max // 2) + 1) * 2) # Auto-ends on an even interval
     
+    bins_delta = list(range(0, max_bin_limit + 2, 2)) # 2-hour wide bins forever
+    bin_centers_delta = [h + 1 for h in bins_delta[:-1]]
     labels_delta = [f"{h}h–{h+2}h" for h in bins_delta[:-1]]
-    labels_delta.append("24h+")        # Appended label for outliers
 
     # Standard 24-hour bins for Time-of-Day graphs
     bins_2hr = list(range(0, 26, 2))
@@ -258,13 +241,14 @@ if st.session_state['run_custom'] or st.session_state['run_awarded']:
     df_rate = pd.DataFrame({"Hours": rate_hours})
     fig1 = px.histogram(
         df_rate, 
-        x="Hours", 
+        x="Hours",
         range_x=[0, 26],
         nbins=13, # Forces exactly 13 bars across 26 units
         title="Frequency of Level Ratings by Time of Day (RobTop's Timezone)"
     )
     fig1.update_layout(
         xaxis=dict(tickmode='array', tickvals=bin_centers_2hr, ticktext=labels_2hr, tickangle=35),
+        yaxis_title=dict(text="Levels"),
         bargap=0.15,
         title_font=dict(size=14, family="Arial"),
         template="plotly_dark",  
@@ -286,13 +270,14 @@ if st.session_state['run_custom'] or st.session_state['run_awarded']:
     df_send = pd.DataFrame({"Hours": send_hours})
     fig2 = px.histogram(
         df_send, 
-        x="Hours", 
+        x="Hours",
         range_x=[0, 26],
         nbins=13,
         title="Frequency of 'Successful' Sends by Time of Day (RobTop's Timezone)"
     )
     fig2.update_layout(
         xaxis=dict(tickmode='array', tickvals=bin_centers_2hr, ticktext=labels_2hr, tickangle=35),
+        yaxis_title=dict(text="Levels"),
         bargap=0.15,
         title_font=dict(size=14, family="Arial"),
         template="plotly_dark",  
@@ -309,28 +294,56 @@ if st.session_state['run_custom'] or st.session_state['run_awarded']:
     st.plotly_chart(fig2, width="stretch")
 
 
-    # --- CHART 3: Fixed Outlier Scaling ---
+    # --- CHART 3: Interactive with Range/Scroll View ---
     df_delta = pd.DataFrame({"Delay": delta_hours})
+    
     fig3 = px.histogram(
         df_delta, 
         x="Delay", 
-        range_x=[0, 26],
-        nbins=13,
         title="Time Elapsed Between Most Recent Send and Level Rate"
     )
+    
     fig3.update_layout(
-        xaxis=dict(tickmode='array', tickvals=bin_centers_delta, ticktext=labels_delta, tickangle=45),
+        # 1. Set explicit array ticks to label the intervals beautifully
+        xaxis=dict(
+            tickmode='array', 
+            tickvals=bin_centers_delta, 
+            ticktext=labels_delta, 
+            tickangle=45,
+            # 2. FORCE INTIAL WINDOW VIEW: Lock the screen starting area between 0 and 24 hours
+            range=[0, 24], 
+            # 3. SCROLLBAR: Embed a dedicated horizontal navigation track underneath
+            rangeslider=dict(visible=True, thickness=0.04) 
+        ),
+        yaxis_title=dict(text="Levels"),
         bargap=0.15,
         title_font=dict(size=14, family="Arial"),
         template="plotly_dark",  
-        paper_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",  
         plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=60, r=60, t=60, b=90)
+        # Enhanced bottom padding margin to accommodate both rotated labels AND the scroll slider
+        margin=dict(l=70, r=70, t=60, b=120) 
     )
+    
+    # Strictly bind every individual bar snippet to a clean 2-hour width step
     fig3.update_traces(
-        xbins=dict(start=0, end=26, size=2),
+        xbins=dict(start=0, end=max_bin_limit, size=2),
         marker_color='lightgreen', 
         marker_line_color='white', 
         marker_line_width=0.5
     )
+    
     st.plotly_chart(fig3, width="stretch")
+
+    notes_exp = st.expander("Notes", expanded=True)
+    if len(notable_time_deltas) > 0:
+        notes_exp.write("Levels that have a higher than usual time difference between last send and rate:")
+        for level in notable_time_deltas:
+            notes_exp.write(level)
+        notes_exp.write("\n")
+
+    if len(notes) > 0:
+        notes_exp.write("Noteworthy levels:")
+        for level in notes:
+            notes_exp.write(level)
+        notes_exp.write("\n")
