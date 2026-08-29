@@ -37,9 +37,9 @@ If you want to quickly see some example results, here are the graphs that are ou
 100 nondemon, classic levels from the Awarded Tab
 450 most recent levels from the Sent Tab (unrated)
 
-![RobTop's Level Rating Patterns](files/Level Ratings.png)
-![Sent Tab vs Awarded Tab Send Time Distribution](files/Most Recent Send Times (Sent and Unrated vs. Sent and Rated).png)
-![Time between Send and Rate](files/Time between Send and Rate.png)
+![RobTop's Level Rating Patterns](<files/Level Ratings.png>)
+![Sent Tab vs Awarded Tab Send Time Distribution](<files/Most Recent Send Times (Sent and Unrated vs. Sent and Rated).png>)
+![Time between Send and Rate](<files/Time between Send and Rate.png>)
 
 ## Acknowledgments
 

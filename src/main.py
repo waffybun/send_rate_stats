@@ -54,7 +54,7 @@ if 'debug_expander' not in st.session_state:
 
 """ 
 # Send/Rate Statistics Visualizer
-Please note all provided times are in UTC unless otherwise specified.
+Please note all provided times are in RobTop's timezone (EST+6) unless otherwise specified.
 """
 
 col1, col2 = st.columns(2)
@@ -96,13 +96,13 @@ def get_level_data(level_id, debug, log=None):
                 for send in sends:
                     list_send_timestamp = float(send['timestamp'])/1000 # convert from ms to s
                     list_send_time = datetime.fromtimestamp(list_send_timestamp, tz=timezone.utc)
-                    if debug and log: log.write(f"Time of send {send_counter}: {list_send_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    if debug and log: log.write(f"Time of send {send_counter} (UTC): {list_send_time.strftime('%Y-%m-%d %H:%M:%S')}")
                     send_counter += 1
             last_send_timestamp = float(most_recent_send_time)/1000 # convert from ms to s
             send_time = datetime.fromtimestamp(last_send_timestamp, tz=timezone.utc)
             send_times.append(send_time)
             if log and not debug:
-                log.write(f"Time of {level_name} by {creator} (ID {level_id})'s most recent send: {send_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                log.write(f"Time of {level_name} by {creator} (ID {level_id})'s most recent send (UTC): {send_time.strftime('%Y-%m-%d %H:%M:%S')}")
         else:
             if log:
                 log.write(f"{level_name} by {creator} (ID {level_id}) was rated without any sends, or the level was rated before SendDB started tracking sends.")
@@ -112,7 +112,7 @@ def get_level_data(level_id, debug, log=None):
             rate_time = datetime.fromtimestamp(rate_timestamp, tz=timezone.utc)
             time_difference = rate_time-send_time
             if log:
-                log.write(f"Time level was rated: {rate_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                log.write(f"Time level was rated (UTC): {rate_time.strftime('%Y-%m-%d %H:%M:%S')}")
             rate_times.append(rate_time)
             if log:
                 log.write(f"Time between last send and level rate: {custom_format(time_difference)}")
@@ -252,7 +252,7 @@ if st.session_state['run_custom'] or st.session_state['run_awarded']:
         x="Hours",
         range_x=[0, 26],
         nbins=13, # Forces exactly 13 bars across 26 units
-        title="Frequency of Level Ratings by Time of Day (RobTop's Timezone)"
+        title="Frequency of Level Ratings by Time of Day"
     )
     fig1.update_layout(
         xaxis=dict(tickmode='array', tickvals=bin_centers_2hr, ticktext=labels_2hr, tickangle=35),
@@ -300,7 +300,7 @@ if st.session_state['run_custom'] or st.session_state['run_awarded']:
 
     fig2.update_layout(
         barmode="overlay",
-        title="Sends by Time of Day: All vs. Successful (RobTop's Timezone)",
+        title="Sends by Time of Day: All vs. Successful",
         xaxis=dict(tickmode='array', tickvals=bin_centers_2hr, ticktext=labels_2hr, tickangle=35, range=[0, 26]),
         yaxis_title=dict(text="% of respective total"),
         bargap=0.15,
