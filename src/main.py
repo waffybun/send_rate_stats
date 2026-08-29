@@ -6,6 +6,7 @@ import pandas as pd
 from pathlib import Path
 import plotly.express as px
 import streamlit as st
+import plotly.graph_objects as go
 
 requests_cache.install_cache('global_cache', expire_after=3600) # cache api responses for an hour so we don't need to keep getting them over and over
 
@@ -18,6 +19,15 @@ send_times = []
 time_deltas = []
 notes = []
 notable_time_deltas = []
+
+all_send_times_filepath = Path(__file__).resolve().parents[1] / "files" / "send_times_hours.txt"
+
+all_send_hours = []
+if all_send_times_filepath.exists():
+    with open(all_send_times_filepath, "r") as f:
+        all_send_hours = [float(line.strip()) for line in f if line.strip()]
+else:
+    st.warning(f"Could not find {all_send_times_filepath.name} — run the scraper script first to generate it.")
 
 extra_info = st.empty()
 
@@ -263,34 +273,45 @@ if st.session_state['run_custom'] or st.session_state['run_awarded']:
     )
     st.plotly_chart(fig1, width="stretch")
 
+    # --- CHART 2: All Sends vs. Successful Sends (normalized) ---
+    fig2 = go.Figure()
 
-    # --- CHART 2: Fixed Send Times ---
-    df_send = pd.DataFrame({"Hours": send_hours})
-    fig2 = px.histogram(
-        df_send, 
-        x="Hours",
-        range_x=[0, 26],
-        nbins=13,
-        title="Frequency of 'Successful' Sends by Time of Day (RobTop's Timezone)"
-    )
+    fig2.add_trace(go.Histogram(
+        x=all_send_hours,
+        xbins=dict(start=0, end=26, size=2),
+        histnorm="percent",
+        name="All Sends",
+        marker_color="thistle",
+        marker_line_color="white",
+        marker_line_width=0.5,
+        opacity=0.6,
+    ))
+
+    fig2.add_trace(go.Histogram(
+        x=send_hours,
+        xbins=dict(start=0, end=26, size=2),
+        histnorm="percent",
+        name="Successful Sends",
+        marker_color="skyblue",
+        marker_line_color="white",
+        marker_line_width=0.5,
+        opacity=0.6,
+    ))
+
     fig2.update_layout(
-        xaxis=dict(tickmode='array', tickvals=bin_centers_2hr, ticktext=labels_2hr, tickangle=35),
-        yaxis_title=dict(text="Levels"),
+        barmode="overlay",
+        title="Sends by Time of Day: All vs. Successful (RobTop's Timezone)",
+        xaxis=dict(tickmode='array', tickvals=bin_centers_2hr, ticktext=labels_2hr, tickangle=35, range=[0, 26]),
+        yaxis_title=dict(text="% of respective total"),
         bargap=0.15,
         title_font=dict(size=14, family="Arial"),
-        template="plotly_dark",  
+        template="plotly_dark",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=60, r=60, t=60, b=90)
+        margin=dict(l=60, r=60, t=60, b=90),
     )
-    fig2.update_traces(
-        xbins=dict(start=0, end=26, size=2),
-        marker_color='thistle', 
-        marker_line_color='white', 
-        marker_line_width=0.5
-    )
-    st.plotly_chart(fig2, width="stretch")
 
+    st.plotly_chart(fig2, width="stretch")
 
     # --- CHART 3: Interactive with Range/Scroll View ---
     df_delta = pd.DataFrame({"Delay": delta_hours})

@@ -14,6 +14,8 @@ Level IDs are obtained from the spreadsheet by starting at the end (which contai
 
 There are also graphs generated from the data, which show what times levels are most likely to be rated at, what times their most recent send was at (as only the most recent send seems to matter, given the fact that every send pushes the level to the top of the Sent Tab), and the time difference between a level being sent and a level being rated. The data seem to heavily suggest that levels sent at certain times are significantly more likely to be rated, though more testing (and perhaps statistical analysis) could always be done.
 
+v1.1 - I have added another file that scrapes the Sent Tab directly, irrespective of whether the levels are rated or not. This allowed me to pull the send timings of 450 levels and graph them against the send timings of rated levels. The distribution differences show a clear bias towards certain timeframes, causing sends that are near the middle of the day in RobTop's timezone to be skipped disproportionately whereas sends that align with RobTop's rating patterns have a disproportionately high chance of being seen and rated.
+
 ## Getting Started
 
 ### Dependencies
@@ -22,17 +24,22 @@ There are also graphs generated from the data, which show what times levels are 
 * The requests_cache library is used to cache SendDB API data for an hour to speed up testing.
 * The pandas library is used to read data from the spreadsheet.
 * Streamlit was used to create the frontend.
-* Plotly.express is used to graph results and trends.
+* Plotly is used to graph results and trends.
 
 ### Executing program
 
-The program can be ran locally, though there is also a hosted version (link coming soon!)
+The program can be ran locally, though there is also a hosted version available at https://sendratestats.streamlit.app/.
+The website caches recent API requests for up to one hour, so the program can be rerun without waiting for API results to be fetched every time.
 
 ## Example results
 
-The following results were obtained using the statistics of 100 nondemon classic levels, scraped from the spreadsheet.
+If you want to quickly see some example results, here are the graphs that are output when running the program with:
+100 nondemon, classic levels from the Awarded Tab
+450 most recent levels from the Sent Tab (unrated)
 
-![Nondemon Classics](files/classic_nondemon_stats.png)
+![RobTop's Level Rating Patterns](files/Level Ratings.png)
+![Sent Tab vs Awarded Tab Send Time Distribution](files/Most Recent Send Times (Sent and Unrated vs. Sent and Rated).png)
+![Time between Send and Rate](files/Time between Send and Rate.png)
 
 ## Acknowledgments
 
@@ -40,4 +47,5 @@ The following results were obtained using the statistics of 100 nondemon classic
 * [SorkoPiko](https://www.sorkopiko.com/) - creator of SendDB
 * SolarPK - made me realize that SendDB even had an API, prompting the idea for the project and making it possible
 * AndromedaMapping1 - creator of the [Rated Levels spreadsheet](https://docs.google.com/spreadsheets/d/1hzidRG2rq2LdeKY4kDndYUNpc_GVHFi1dICtQWCUsgc/edit?gid=23179898#gid=23179898) I used to scrape level IDs and info
-* My Discord server, goober isle, for being the reason I cared about the rate system and the creators who get screwed over by it to the point where I wanted to do this
+* [GD Docs developers](https://boomlings.dev/credits) - used to figure out how to scrape the sent tab
+* My Discord level request server, goober isle, for being the reason I cared about the rate system and the creators who get screwed over by it to the point where I wanted to do this
