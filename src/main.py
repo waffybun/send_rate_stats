@@ -212,6 +212,7 @@ if st.session_state['run_custom'] or st.session_state['run_awarded']:
     robtop_tz = ZoneInfo("Europe/Stockholm")
 
     # TEMPORARY AI SLOP BELOW (just using this to see if i'm actually onto something, if i am i'll rewrite the code myself)
+    # umm i may have lied i'm sorry i'm lazy and don't want to learn a graphing library i'll never use again
 
     # 1. Process Data
     rate_hours = [time.astimezone(robtop_tz).hour + time.astimezone(robtop_tz).minute / 60.0 for time in rate_times]
